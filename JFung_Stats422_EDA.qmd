@@ -1,0 +1,756 @@
+---
+title: "Setter Decision and Hit Result in Volleyball Analysis"
+author: "Julia Fung"
+format: pdf
+editor: visual
+---
+
+#Set up
+
+Packages
+```{r}
+#| output: false
+library(tidyverse)
+library(rsample)
+library(readxl)
+library(PerformanceAnalytics)
+library(nnet)
+library(sjPlot)
+library(effects)
+library(randomForest)
+library(gridExtra)
+library(xtable)
+```
+
+Data
+```{r}
+#| output: false
+setters <- read_excel("C:/Users/jfung/Files/Datasets/setters.xlsx")
+```
+
+Set Variable Types
+```{r}
+setters <- setters |>
+  mutate(kill = as.logical(kill),
+         rotation = as.factor(rotation),
+         receiver_loc = as.factor(receiver_loc),
+         pass_loc = as.factor(pass_loc),
+         pass_quality = as.factor(pass_quality),
+         set_loc = as.factor(set_loc),
+         set_receiver = as.factor(set_receiver),
+         team = as.factor(team),
+         level = as.factor(level),
+         game = as.factor(game),
+         game_sex = as.factor(game_sex))
+```
+
+Split
+```{r}
+#| output: false
+set.seed(3905)
+df_split <- initial_split(setters,
+                          prop = 0.75)
+train <- training(df_split)
+test <- testing(df_split)
+```
+
+
+# Data Exploration and Cleaning
+
+## Numerical Predictors
+```{r}
+num_vars <- train[, c(2:7, 14)]
+```
+
+Correlation Matrix
+```{r}
+png(
+file.path("_assets",
+"num_var_corplot.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+chart.Correlation(num_vars, 
+                  histogram = TRUE)
+mtext("Numerical Variable Relationships and Distributions", side = 3, line = 3)
+dev.off()
+```
+Point variables are highly correlated, so only retain total_points and team1_diff
+
+### Updated Data Set(train_clean)
+```{r}
+train_clean <- train |>
+  select(-c(points1, points2, team2_diff))
+```
+
+## Categorical Predictors
+```{r}
+cat_vars <- train_clean[, -c(1:4, 10:13)]
+```
+
+Distributions Plot
+```{r}
+plots <- list()
+for(var in names(cat_vars)){
+  freqs <- data.frame(table(train_clean[var]))
+  freqs$prop <- freqs$Freq/sum(freqs$Freq)
+  plots[[var]] <- freqs |>
+    ggplot(aes(x = !!sym(var), y = prop)) +
+    geom_bar(stat = "identity") +
+    ggtitle(paste(var, "Distribution")) + 
+    theme_minimal()
+}
+
+png(
+file.path("_assets",
+"cat_var_dists.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+grid.arrange(grobs = plots,
+             nrow = 3,
+             ncol = 3)
+
+dev.off()
+```
+Counts for some pass locations and qualities are low, so I will create a binary in-system variable.  Also 6 rotation to back and front binary
+
+### Updated Data set
+```{r}
+train_clean <- train_clean |>
+  mutate(insys = ifelse(pass_loc %in% c(2,3,4,7) & pass_quality %in% c(4,5),
+                        TRUE,
+                        FALSE),
+         back_setter = ifelse(rotation %in% c(1, 2, 3),
+                              TRUE,
+                              FALSE)) |>
+  select(-c(pass_loc, pass_quality, receiver_loc, rotation))
+```
+
+## Response Variables
+
+### Set Location
+```{r}
+png(
+file.path("_assets",
+"set_loc_dist.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+data.frame(table(train_clean$set_loc)) |>
+    ggplot(aes(x = Var1, y = Freq)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Set Location Distribution",
+         x = "Set Location",
+         y = "Frequency") + 
+    theme_minimal()
+dev.off()
+```
+Group infrequent locations
+
+### Updated Set Locations
+```{r}
+train_clean <- train_clean |>
+  mutate(set_loc = case_when(
+    set_loc %in% c("back1", "1", "2", "back2", "3", "dump") ~ "midCourt",
+    set_loc == "back3" ~ "5",
+    set_loc %in% c("A", "B", "C", "D", "pipe") ~ "backRow",
+    TRUE ~ set_loc
+  )) |>
+  mutate(set_loc = as.factor(set_loc))
+# make a 4 the reference category(default set)
+train_clean$set_loc <- relevel(train_clean$set_loc, ref = "4")
+```
+
+Distribution
+```{r}
+png(
+file.path("_assets",
+"set_loc2_dist.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+data.frame(table(train_clean$set_loc)) |>
+    ggplot(aes(x = Var1, y = Freq)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Grouped Set Location Distribution",
+         x = "Set Location",
+         y = "Frequency") + 
+    theme_minimal()
+dev.off()
+```
+
+### Set Receiver
+```{r}
+png(
+file.path("_assets",
+"set_rec_dist.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+data.frame(table(train_clean$set_receiver)) |>
+    ggplot(aes(x = Var1, y = Freq)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Set Receiver Distribution",
+         x = "Set Receiver",
+         y = "Frequency") + 
+    theme_minimal()
+dev.off()
+```
+
+### Updated Set Receivers
+```{r}
+train_clean <- train_clean |>
+  mutate(set_receiver = case_when(
+    set_receiver %in% c("ds", "libero", "setter1", "setter2", "opposite2", "outside3") ~ "other",
+    set_receiver %in% c("middle1", "middle2", "middle3") ~ "middle",
+    set_receiver == "outside" ~ "outside2",
+    TRUE ~ set_receiver
+  ))
+train_clean$set_receiver <- as.factor(train_clean$set_receiver)
+```
+
+Distribution
+```{r}
+png(
+file.path("_assets",
+"set_rec2_dist.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+data.frame(table(train_clean$set_receiver)) |>
+    ggplot(aes(x = Var1, y = Freq)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Grouped Set Receiver Distribution",
+         x = "Set Receiver",
+         y = "Frequency") + 
+    theme_minimal()
+dev.off()
+```
+
+### Kill
+```{r}
+png(
+file.path("_assets",
+"kill_dist.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+data.frame(table(train_clean$kill)) |>
+    ggplot(aes(x = Var1, y = Freq)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Attack Success Distribution",
+         x = "Attack Success",
+         y = "Frequency") + 
+    theme_minimal()
+dev.off()
+```
+
+# Set Locaton Modeling
+
+## Full Model
+
+Model
+```{r}
+full_model <- multinom(set_loc ~ team1_diff + tot_point + set + game + team + level + game_sex + insys + back_setter,
+                      data = train_clean)
+summary(full_model, Wald.ratios = TRUE)
+```
+
+Z-scores and p-values
+```{r}
+z <- summary(full_model)$coefficients/summary(full_model)$standard.errors
+p <- (1-pnorm(abs(z), 0, 1))*2
+```
+
+Prediction Accuracy
+```{r}
+p <- predict(full_model, train_clean)
+tab <- table(p, train_clean$set_loc)
+tab
+
+(388 + 61 + 82 + 49)/1464
+```
+
+### Counts Validation
+```{r}
+#| eval: false
+ftable(tab1 <- xtabs(~set_loc + team1_diff + tot_point + set + game + team + level + set_sex + game_sex + net_height + insys + back_setter,
+                     data = train_clean))
+```
+
+
+## Random Forest Variable Selection
+```{r}
+rf_model <- randomForest(set_loc ~ team1_diff + tot_point + set + game + team + level + game_sex + insys + back_setter,
+                      data = train_clean,
+                 ntree = 1000,
+                 mtry = 4,
+                 importance = TRUE)
+print(rf_model)
+varImpPlot(rf_model)
+```
+
+```{r}
+png(
+file.path("_assets",
+"rf_varImp_loc.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+varImpPlot(rf_model)
+dev.off()
+```
+
+
+## Reduced Model 
+
+
+Model
+```{r}
+red_model <- multinom(set_loc ~ team1_diff + tot_point + set + game + insys + back_setter,
+                      data = train_clean)
+summary(red_model, Wald.ratios = TRUE)
+```
+
+Z-scores and p-values
+```{r}
+z <- summary(red_model)$coefficients/summary(red_model)$standard.errors
+p <- (1-pnorm(abs(z), 0, 1))*2
+p < 0.05
+```
+
+Prediction Accuracy
+```{r}
+p <- predict(red_model, train_clean)
+tab <- table(p, train_clean$set_loc)
+tab
+
+(384 + 53 + 81 + 56)/1464
+```
+
+### Count Validation
+```{r}
+tab <- ftable(tab1 <- xtabs(~set_loc + level + insys + back_setter,
+                            data = train_clean))
+
+xtb <- as.data.frame(tab)
+
+xttbl <-
+xtable(xtb,
+caption="Set location counts by reduced predictors",
+label="tab:red_pred_setCount")
+
+xxx <- print(xttbl, include.rownames=FALSE, table.placement="H") ### need LaTeX pkg float
+
+writeLines( xxx, file.path("_assets", "red_pred_setCount.tex") )
+```
+still some empty cells look at just insys and back_setter
+
+
+## 2 predictor model
+
+Model
+```{r}
+small_model <- multinom(set_loc ~ insys + back_setter,
+                      data = train_clean)
+summary(small_model, Wald.ratios = TRUE)
+```
+
+
+Prediction Accuracy
+```{r}
+p <- predict(small_model, train_clean)
+tab <- table(p, train_clean$set_loc)
+tab
+
+(538 + 0 + 0 + 0)/1464
+```
+
+## Return to reduced model 
+
+4v5
+```{r}
+eq4v5 <- data.frame(
+log_odds = summary(red_model)$coefficients[1,],
+odds_ratio = exp(summary(red_model)$coefficients[1,])
+) |>
+  mutate(z = log_odds/summary(red_model)$standard.errors[1,]) |>
+  mutate(p = (1-pnorm(abs(z), 0, 1))*2)
+
+xttbl <-
+xtable(eq4v5,
+caption="Logit Model Coefficients: set location 4 vs. 5",
+label="tab:eq4v5")
+
+xxx <- print(xttbl, table.placement="H") ### need LaTeX pkg float
+
+writeLines( xxx, file.path("_assets", "eq4v5.tex") )
+```
+
+4vbackRow
+```{r}
+eq4vbackRow <- data.frame(
+log_odds = summary(red_model)$coefficients[2,],
+odds_ratio = exp(summary(red_model)$coefficients[2,])
+) |>
+  mutate(z = log_odds/summary(red_model)$standard.errors[2,]) |>
+  mutate(p = (1-pnorm(abs(z), 0, 1))*2)
+
+xttbl <-
+xtable(eq4vbackRow,
+caption="Logit Model Coefficients: set location 4 vs. backRow",
+label="tab:eq4vbackRow")
+
+xxx <- print(xttbl, table.placement="H") ### need LaTeX pkg float
+
+writeLines( xxx, file.path("_assets", "eq4vbackRow.tex") )
+```
+
+
+4vmidCourt
+```{r}
+eq4vmidCourt <- data.frame(
+log_odds = summary(red_model)$coefficients[3,],
+odds_ratio = exp(summary(red_model)$coefficients[3,])
+) |>
+  mutate(z = log_odds/summary(red_model)$standard.errors[3,]) |>
+  mutate(p = (1-pnorm(abs(z), 0, 1))*2)
+
+xttbl <-
+xtable(eq4vmidCourt,
+caption="Logit Model Coefficients: set location 4 vs. midCourt",
+label="tab:eq4vmidCourt")
+
+xxx <- print(xttbl, table.placement="H") ### need LaTeX pkg float
+
+writeLines( xxx, file.path("_assets", "eq4vmidCourt.tex") )
+```
+
+
+# Set Receiver Modeling
+
+## Random Forest Variable Selection 
+```{r}
+rf_model <- randomForest(set_receiver ~ game + team + level + game_sex,
+                      data = train_clean,
+                 ntree = 1000,
+                 mtry = 4,
+                 importance = TRUE)
+print(rf_model)
+varImpPlot(rf_model)
+```
+
+Plot
+```{r}
+png(
+file.path("_assets",
+"rf_varImp_receiver.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+varImpPlot(rf_model)
+dev.off()
+```
+
+## Model 1
+
+Model
+```{r}
+red_model <- multinom(set_receiver ~ team1_diff + tot_point + set + team + insys + back_setter,
+                      data = train_clean)
+summary(red_model, Wald.ratios = TRUE)
+```
+
+Z-scores and p-values
+```{r}
+z <- summary(red_model)$coefficients/summary(red_model)$standard.errors
+p <- (1-pnorm(abs(z), 0, 1))*2
+p < 0.05
+```
+
+Prediction Accuracy
+```{r}
+p <- predict(red_model, train_clean)
+tab <- table(p, train_clean$set_receiver)
+tab
+
+(39 + 183 + 7 + 154 + 124)/1464
+```
+34.63% accuracy
+
+
+### Count Validation
+```{r}
+tab <- ftable(tab1 <- xtabs(~set_receiver + team + insys + back_setter,
+                            data = train_clean))
+
+xtb <- as.data.frame(tab)
+
+xttbl <-
+xtable(xtb,
+caption="Set Receiver counts by reduced predictors",
+label="tab:red_pred_recCount")
+
+xxx <- print(xttbl, include.rownames=FALSE, table.placement="H") ### need LaTeX pkg float
+
+writeLines( xxx, file.path("_assets", "red_pred_recCount.tex") )
+```
+
+Team counts
+```{r}
+tab <- ftable(tab1 <- xtabs(~set_receiver + team,
+                            data = train_clean))
+
+xtb <- as.data.frame(tab)
+
+xttbl <-
+xtable(xtb,
+caption="Set Receiver counts by team",
+label="tab:team_recCount")
+
+xxx <- print(xttbl, include.rownames=FALSE, table.placement="H") ### need LaTeX pkg float
+
+writeLines( xxx, file.path("_assets", "team_recCount.tex") )
+```
+
+## No team predictor
+
+Model
+```{r}
+noTeam_model <- multinom(set_receiver ~ team1_diff + tot_point + set + insys + back_setter,
+                      data = train_clean)
+summary(noTeam_model, Wald.ratios = TRUE)
+```
+
+Z-scores and p-values
+```{r}
+z <- summary(noTeam_model)$coefficients/summary(noTeam_model)$standard.errors
+p <- (1-pnorm(abs(z), 0, 1))*2
+p < 0.05
+```
+
+Prediction Accuracy
+```{r}
+p <- predict(noTeam_model, train_clean)
+tab <- table(p, train_clean$set_receiver)
+tab
+
+(0 + 129 + 0 + 211 + 85)/1464
+```
+29.03% accuracy
+
+## 2 predictor model
+
+Model
+```{r}
+small_model <- multinom(set_receiver ~ insys + back_setter,
+                      data = train_clean)
+summary(small_model, Wald.ratios = TRUE)
+```
+
+
+Prediction Accuracy
+```{r}
+p <- predict(small_model, train_clean)
+tab <- table(p, train_clean$set_receiver)
+tab
+
+(0 + 129 + 0 + 204 + 93)/1464
+```
+
+# Kill
+
+## Full model
+```{r}
+full_model <- glm(kill ~ team1_diff + tot_point + set + game + set_loc + num_block + set_receiver + team + level + game_sex + insys + back_setter,
+                   data = train_clean,
+                   family = "binomial")
+summary(full_model)
+```
+
+## Forward/Backward Propagation
+```{r}
+null_model <- glm(kill~1,
+                  data = train_clean,
+                  family = "binomial")
+forward_model <- step(null_model,
+                   scope = formula(full_model),
+                   direction = "forward",
+                   data = train_clean)
+backward_model <- step(full_model,
+                       direction = "backward",
+                       data = train_clean)
+```
+Forward: insys + game_sex + set_receiver + num_block  -    AIC: 1854.56 
+Backward: game + num_block + set_receiver + insys     -    AIC: 1861.37
+
+
+
+
+Summary
+```{r}
+summary(forward_model)
+```
+
+$R^2$
+```{r}
+1 - (1838.6/1952.7)
+```
+
+Accuracy
+```{r}
+p <- predict(forward_model, train_clean, type = "response")
+pred <- ifelse(p > 0.5, 1, 0)
+sum(pred)/1464
+```
+15.399% accuracy
+
+###Goodness of fit
+```{r}
+sum(residuals(forward_model,type="pearson")^2)
+qchisq(0.95, 1456)
+```
+
+### Model table
+```{r}
+forward_model_ests <- data.frame(summary(forward_model)$coefficients) |>
+  mutate(sig = `Pr...z..` < 0.05,
+         odds = exp(Estimate)) |>
+  select(Estimate, odds, everything())
+names(forward_model_ests) <- c("log_odds", "odds", "Std. Error", "Z-stat", "p-value", "Sig")
+
+xtb <- forward_model_ests
+
+xttbl <-
+xtable(xtb,
+caption="Hit Result Model Coefficients",
+label="tab:eqKill")
+
+xxx <- print(xttbl, table.placement="H") ### need LaTeX pkg float
+
+writeLines( xxx, file.path("_assets", "eqKill.tex") )
+```
+
+### Assumptions
+```{r}
+library(car)
+library(alr4)
+
+png(
+file.path("_assets",
+"kill_resPlot.png"),
+width=1080,
+height=800,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+suppressWarnings(residualPlots(forward_model))
+mtext("Attack Success Residual Plots", side = 3, line = 3)
+dev.off()
+
+
+png(
+file.path("_assets",
+"kill_inflPlot.png"),
+width=1100,
+height=1000,
+pointsize=30 )
+
+par(mar=c(4, 4, 4, 1))
+suppressWarnings(influenceIndexPlot(forward_model, vars=c("Cook","hat"), id.n=3))
+dev.off()
+```
+
+# Model Validation
+```{r}
+test_clean <- test |>
+  select(-c(points1, points2, team2_diff)) |>
+  mutate(insys = ifelse(pass_loc %in% c(2,3,4,7) & pass_quality %in% c(4,5),
+                        TRUE,
+                        FALSE),
+         back_setter = ifelse(rotation %in% c(1, 2, 3),
+                              TRUE,
+                              FALSE)) |>
+  select(-c(pass_loc, pass_quality, receiver_loc, rotation)) |>  
+  mutate(set_loc = case_when(
+    set_loc %in% c("back1", "1", "2", "back2", "3", "dump") ~ "midCourt",
+    set_loc == "back3" ~ "5",
+    set_loc %in% c("A", "B", "C", "D", "pipe") ~ "backRow",
+    TRUE ~ set_loc
+  )) |>
+  mutate(set_loc = as.factor(set_loc)) |>
+  mutate(set_receiver = case_when(
+    set_receiver %in% c("ds", "libero", "setter1", "setter2", "opposite2", "outside3") ~ "other",
+    set_receiver %in% c("middle1", "middle2", "middle3") ~ "middle",
+    set_receiver == "outside" ~ "outside2",
+    TRUE ~ set_receiver
+  ))
+  
+  
+  
+  
+# make a 4 the reference category(default set)
+test_clean$set_loc <- relevel(test_clean$set_loc, ref = "4")  
+```
+
+
+
+## Set Location
+```{r}
+red_model <- multinom(set_loc ~ team1_diff + tot_point + set + level + insys + back_setter,
+                      data = train_clean)
+```
+
+Test set accuracy
+```{r}
+p <- predict(red_model, test_clean)
+tab <- table(p, test_clean$set_loc)
+tab
+
+(157 + 15 + 0 + 10)/488
+```
+
+
+## Kill
+```{r}
+p <- predict(forward_model, test_clean, type = "response")
+pred <- ifelse(p > 0.5, 1, 0)
+sum(pred)/518
+```
+13.707% accuracy
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
