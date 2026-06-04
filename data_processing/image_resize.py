@@ -3,7 +3,8 @@ import os
 from PIL import Image
 
 # data path
-path_to_sets_folder = "C:/Users/jfung/Files/Datasets/set_images/"
+base = os.path.abspath(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+path_to_sets_folder = os.path.join(base, "data", "set_images")
 
 # read in images from games 1-8 with sets up to four
 for set in os.listdir(path_to_sets_folder): # loop through game sets in data
