@@ -5,9 +5,8 @@ import os
 
 # load df
 base = os.path.abspath(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-path_to_xlsx = os.path.join(base, "data", "setters.xlsx")
+path_to_xlsx = os.path.join(base, "data", "processed.xlsx")
 df = pd.read_excel(path_to_xlsx)
-df["set_loc"] = df["set_loc"].astype(str)
 
 # split data
 n = len(df)
@@ -31,5 +30,3 @@ os.makedirs(split_dir, exist_ok = True)
 train_df.to_excel(os.path.join(split_dir, "train.xlsx"), index = False)
 val_df.to_excel(os.path.join(split_dir, "val.xlsx"), index = False)
 test_df.to_excel(os.path.join(split_dir, "test.xlsx"), index = False)
-
-
