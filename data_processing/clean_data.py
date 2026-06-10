@@ -44,12 +44,17 @@ df[['pass_loc_cos', 'pass_loc_sin']] = (
     df['pass_loc'].apply(lambda v: pd.Series(encode_orientation(v)))
 )
 
+df['men'] = df['game_sex'].map({'W': 0, 'M': 1}).astype('int')
+
 df = df.astype({
     'receiver_loc_cos': 'float',
     'receiver_loc_sin': 'float',
     'pass_loc_cos': 'float',
-    'pass_loc_sin': 'float'
+    'pass_loc_sin': 'float',
+    'men': 'boolean'
 })
+
+
 
 # save
 data_dir = os.path.join(base, "data")
