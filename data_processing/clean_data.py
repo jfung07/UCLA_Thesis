@@ -21,11 +21,11 @@ df[num_col] = df[num_col].astype('Int64')
 # change categorical to categorical variables[game, rotation, set_loc, set_receiver, team, level, game_sex]
 cat_col = ['game', 'rotation', 'set_loc', 'set_receiver', 'team', 'level', 'game_sex']
 for col in cat_col:
+    df[col] = df[col].astype(str).str.strip()
     df[col] = df[col].astype('category')
 
 # change kill to logical
 df['kill'] = df['kill'].astype('boolean')
-
 
 # transform pass_loc and receive_loc
 angle_map = {
