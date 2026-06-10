@@ -7,6 +7,7 @@ import os
 base = os.path.abspath(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 path_to_xlsx = os.path.join(base, "data", "setters.xlsx")
 df = pd.read_excel(path_to_xlsx)
+df["set_loc"] = df["set_loc"].astype(str)
 
 # split data
 n = len(df)
