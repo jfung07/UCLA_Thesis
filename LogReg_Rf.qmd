@@ -8,6 +8,7 @@ editor: visual
 #Set up
 
 Packages
+
 ```{r}
 #| output: false
 library(tidyverse)
@@ -23,12 +24,14 @@ library(xtable)
 ```
 
 Data
+
 ```{r}
 #| output: false
-setters <- read_excel("C:/Users/jfung/Files/Datasets/setters.xlsx")
+setters <- read_excel("C:/Users/jfung/Documents/Thesis/data/setters.xlsx")
 ```
 
 Set Variable Types
+
 ```{r}
 setters <- setters |>
   mutate(kill = as.logical(kill),
@@ -45,6 +48,7 @@ setters <- setters |>
 ```
 
 Split
+
 ```{r}
 #| output: false
 set.seed(3905)
@@ -54,15 +58,16 @@ train <- training(df_split)
 test <- testing(df_split)
 ```
 
-
 # Data Exploration and Cleaning
 
 ## Numerical Predictors
+
 ```{r}
 num_vars <- train[, c(2:7, 14)]
 ```
 
 Correlation Matrix
+
 ```{r}
 png(
 file.path("_assets",
@@ -77,20 +82,24 @@ chart.Correlation(num_vars,
 mtext("Numerical Variable Relationships and Distributions", side = 3, line = 3)
 dev.off()
 ```
+
 Point variables are highly correlated, so only retain total_points and team1_diff
 
 ### Updated Data Set(train_clean)
+
 ```{r}
 train_clean <- train |>
   select(-c(points1, points2, team2_diff))
 ```
 
 ## Categorical Predictors
+
 ```{r}
 cat_vars <- train_clean[, -c(1:4, 10:13)]
 ```
 
 Distributions Plot
+
 ```{r}
 plots <- list()
 for(var in names(cat_vars)){
@@ -116,9 +125,11 @@ grid.arrange(grobs = plots,
 
 dev.off()
 ```
-Counts for some pass locations and qualities are low, so I will create a binary in-system variable.  Also 6 rotation to back and front binary
+
+Counts for some pass locations and qualities are low, so I will create a binary in-system variable. Also 6 rotation to back and front binary
 
 ### Updated Data set
+
 ```{r}
 train_clean <- train_clean |>
   mutate(insys = ifelse(pass_loc %in% c(2,3,4,7) & pass_quality %in% c(4,5),
@@ -133,6 +144,7 @@ train_clean <- train_clean |>
 ## Response Variables
 
 ### Set Location
+
 ```{r}
 png(
 file.path("_assets",
@@ -151,9 +163,11 @@ data.frame(table(train_clean$set_loc)) |>
     theme_minimal()
 dev.off()
 ```
+
 Group infrequent locations
 
 ### Updated Set Locations
+
 ```{r}
 train_clean <- train_clean |>
   mutate(set_loc = case_when(
@@ -168,6 +182,7 @@ train_clean$set_loc <- relevel(train_clean$set_loc, ref = "4")
 ```
 
 Distribution
+
 ```{r}
 png(
 file.path("_assets",
@@ -188,6 +203,7 @@ dev.off()
 ```
 
 ### Set Receiver
+
 ```{r}
 png(
 file.path("_assets",
@@ -208,6 +224,7 @@ dev.off()
 ```
 
 ### Updated Set Receivers
+
 ```{r}
 train_clean <- train_clean |>
   mutate(set_receiver = case_when(
@@ -220,6 +237,7 @@ train_clean$set_receiver <- as.factor(train_clean$set_receiver)
 ```
 
 Distribution
+
 ```{r}
 png(
 file.path("_assets",
@@ -240,6 +258,7 @@ dev.off()
 ```
 
 ### Kill
+
 ```{r}
 png(
 file.path("_assets",
@@ -264,6 +283,7 @@ dev.off()
 ## Full Model
 
 Model
+
 ```{r}
 full_model <- multinom(set_loc ~ team1_diff + tot_point + set + game + team + level + game_sex + insys + back_setter,
                       data = train_clean)
@@ -271,12 +291,14 @@ summary(full_model, Wald.ratios = TRUE)
 ```
 
 Z-scores and p-values
+
 ```{r}
 z <- summary(full_model)$coefficients/summary(full_model)$standard.errors
 p <- (1-pnorm(abs(z), 0, 1))*2
 ```
 
 Prediction Accuracy
+
 ```{r}
 p <- predict(full_model, train_clean)
 tab <- table(p, train_clean$set_loc)
@@ -286,14 +308,15 @@ tab
 ```
 
 ### Counts Validation
+
 ```{r}
 #| eval: false
 ftable(tab1 <- xtabs(~set_loc + team1_diff + tot_point + set + game + team + level + set_sex + game_sex + net_height + insys + back_setter,
                      data = train_clean))
 ```
 
-
 ## Random Forest Variable Selection
+
 ```{r}
 rf_model <- randomForest(set_loc ~ team1_diff + tot_point + set + game + team + level + game_sex + insys + back_setter,
                       data = train_clean,
@@ -317,11 +340,10 @@ varImpPlot(rf_model)
 dev.off()
 ```
 
-
-## Reduced Model 
-
+## Reduced Model
 
 Model
+
 ```{r}
 red_model <- multinom(set_loc ~ team1_diff + tot_point + set + game + insys + back_setter,
                       data = train_clean)
@@ -329,6 +351,7 @@ summary(red_model, Wald.ratios = TRUE)
 ```
 
 Z-scores and p-values
+
 ```{r}
 z <- summary(red_model)$coefficients/summary(red_model)$standard.errors
 p <- (1-pnorm(abs(z), 0, 1))*2
@@ -336,6 +359,7 @@ p < 0.05
 ```
 
 Prediction Accuracy
+
 ```{r}
 p <- predict(red_model, train_clean)
 tab <- table(p, train_clean$set_loc)
@@ -345,6 +369,7 @@ tab
 ```
 
 ### Count Validation
+
 ```{r}
 tab <- ftable(tab1 <- xtabs(~set_loc + level + insys + back_setter,
                             data = train_clean))
@@ -360,20 +385,21 @@ xxx <- print(xttbl, include.rownames=FALSE, table.placement="H") ### need LaTeX 
 
 writeLines( xxx, file.path("_assets", "red_pred_setCount.tex") )
 ```
-still some empty cells look at just insys and back_setter
 
+still some empty cells look at just insys and back_setter
 
 ## 2 predictor model
 
 Model
+
 ```{r}
 small_model <- multinom(set_loc ~ insys + back_setter,
                       data = train_clean)
 summary(small_model, Wald.ratios = TRUE)
 ```
 
-
 Prediction Accuracy
+
 ```{r}
 p <- predict(small_model, train_clean)
 tab <- table(p, train_clean$set_loc)
@@ -382,9 +408,10 @@ tab
 (538 + 0 + 0 + 0)/1464
 ```
 
-## Return to reduced model 
+## Return to reduced model
 
 4v5
+
 ```{r}
 eq4v5 <- data.frame(
 log_odds = summary(red_model)$coefficients[1,],
@@ -404,6 +431,7 @@ writeLines( xxx, file.path("_assets", "eq4v5.tex") )
 ```
 
 4vbackRow
+
 ```{r}
 eq4vbackRow <- data.frame(
 log_odds = summary(red_model)$coefficients[2,],
@@ -422,8 +450,8 @@ xxx <- print(xttbl, table.placement="H") ### need LaTeX pkg float
 writeLines( xxx, file.path("_assets", "eq4vbackRow.tex") )
 ```
 
-
 4vmidCourt
+
 ```{r}
 eq4vmidCourt <- data.frame(
 log_odds = summary(red_model)$coefficients[3,],
@@ -442,10 +470,10 @@ xxx <- print(xttbl, table.placement="H") ### need LaTeX pkg float
 writeLines( xxx, file.path("_assets", "eq4vmidCourt.tex") )
 ```
 
-
 # Set Receiver Modeling
 
-## Random Forest Variable Selection 
+## Random Forest Variable Selection
+
 ```{r}
 rf_model <- randomForest(set_receiver ~ game + team + level + game_sex,
                       data = train_clean,
@@ -457,6 +485,7 @@ varImpPlot(rf_model)
 ```
 
 Plot
+
 ```{r}
 png(
 file.path("_assets",
@@ -473,6 +502,7 @@ dev.off()
 ## Model 1
 
 Model
+
 ```{r}
 red_model <- multinom(set_receiver ~ team1_diff + tot_point + set + team + insys + back_setter,
                       data = train_clean)
@@ -480,6 +510,7 @@ summary(red_model, Wald.ratios = TRUE)
 ```
 
 Z-scores and p-values
+
 ```{r}
 z <- summary(red_model)$coefficients/summary(red_model)$standard.errors
 p <- (1-pnorm(abs(z), 0, 1))*2
@@ -487,6 +518,7 @@ p < 0.05
 ```
 
 Prediction Accuracy
+
 ```{r}
 p <- predict(red_model, train_clean)
 tab <- table(p, train_clean$set_receiver)
@@ -494,10 +526,11 @@ tab
 
 (39 + 183 + 7 + 154 + 124)/1464
 ```
+
 34.63% accuracy
 
-
 ### Count Validation
+
 ```{r}
 tab <- ftable(tab1 <- xtabs(~set_receiver + team + insys + back_setter,
                             data = train_clean))
@@ -515,6 +548,7 @@ writeLines( xxx, file.path("_assets", "red_pred_recCount.tex") )
 ```
 
 Team counts
+
 ```{r}
 tab <- ftable(tab1 <- xtabs(~set_receiver + team,
                             data = train_clean))
@@ -534,6 +568,7 @@ writeLines( xxx, file.path("_assets", "team_recCount.tex") )
 ## No team predictor
 
 Model
+
 ```{r}
 noTeam_model <- multinom(set_receiver ~ team1_diff + tot_point + set + insys + back_setter,
                       data = train_clean)
@@ -541,6 +576,7 @@ summary(noTeam_model, Wald.ratios = TRUE)
 ```
 
 Z-scores and p-values
+
 ```{r}
 z <- summary(noTeam_model)$coefficients/summary(noTeam_model)$standard.errors
 p <- (1-pnorm(abs(z), 0, 1))*2
@@ -548,6 +584,7 @@ p < 0.05
 ```
 
 Prediction Accuracy
+
 ```{r}
 p <- predict(noTeam_model, train_clean)
 tab <- table(p, train_clean$set_receiver)
@@ -555,19 +592,21 @@ tab
 
 (0 + 129 + 0 + 211 + 85)/1464
 ```
+
 29.03% accuracy
 
 ## 2 predictor model
 
 Model
+
 ```{r}
 small_model <- multinom(set_receiver ~ insys + back_setter,
                       data = train_clean)
 summary(small_model, Wald.ratios = TRUE)
 ```
 
-
 Prediction Accuracy
+
 ```{r}
 p <- predict(small_model, train_clean)
 tab <- table(p, train_clean$set_receiver)
@@ -579,6 +618,7 @@ tab
 # Kill
 
 ## Full model
+
 ```{r}
 full_model <- glm(kill ~ team1_diff + tot_point + set + game + set_loc + num_block + set_receiver + team + level + game_sex + insys + back_setter,
                    data = train_clean,
@@ -587,6 +627,7 @@ summary(full_model)
 ```
 
 ## Forward/Backward Propagation
+
 ```{r}
 null_model <- glm(kill~1,
                   data = train_clean,
@@ -599,37 +640,40 @@ backward_model <- step(full_model,
                        direction = "backward",
                        data = train_clean)
 ```
-Forward: insys + game_sex + set_receiver + num_block  -    AIC: 1854.56 
-Backward: game + num_block + set_receiver + insys     -    AIC: 1861.37
 
-
-
+Forward: insys + game_sex + set_receiver + num_block - AIC: 1854.56 Backward: game + num_block + set_receiver + insys - AIC: 1861.37
 
 Summary
+
 ```{r}
 summary(forward_model)
 ```
 
 $R^2$
+
 ```{r}
 1 - (1838.6/1952.7)
 ```
 
 Accuracy
+
 ```{r}
 p <- predict(forward_model, train_clean, type = "response")
 pred <- ifelse(p > 0.5, 1, 0)
 sum(pred)/1464
 ```
+
 15.399% accuracy
 
 ###Goodness of fit
+
 ```{r}
 sum(residuals(forward_model,type="pearson")^2)
 qchisq(0.95, 1456)
 ```
 
 ### Model table
+
 ```{r}
 forward_model_ests <- data.frame(summary(forward_model)$coefficients) |>
   mutate(sig = `Pr...z..` < 0.05,
@@ -650,6 +694,7 @@ writeLines( xxx, file.path("_assets", "eqKill.tex") )
 ```
 
 ### Assumptions
+
 ```{r}
 library(car)
 library(alr4)
@@ -680,6 +725,7 @@ dev.off()
 ```
 
 # Model Validation
+
 ```{r}
 test_clean <- test |>
   select(-c(points1, points2, team2_diff)) |>
@@ -711,15 +757,15 @@ test_clean <- test |>
 test_clean$set_loc <- relevel(test_clean$set_loc, ref = "4")  
 ```
 
-
-
 ## Set Location
+
 ```{r}
 red_model <- multinom(set_loc ~ team1_diff + tot_point + set + level + insys + back_setter,
                       data = train_clean)
 ```
 
 Test set accuracy
+
 ```{r}
 p <- predict(red_model, test_clean)
 tab <- table(p, test_clean$set_loc)
@@ -728,29 +774,12 @@ tab
 (157 + 15 + 0 + 10)/488
 ```
 
-
 ## Kill
+
 ```{r}
 p <- predict(forward_model, test_clean, type = "response")
 pred <- ifelse(p > 0.5, 1, 0)
 sum(pred)/518
 ```
+
 13.707% accuracy
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
