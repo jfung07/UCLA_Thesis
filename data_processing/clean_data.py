@@ -11,18 +11,15 @@ df = pd.read_excel(path_to_xlsx)
 # remove whitespaces
 df = df.replace(r'^\s*$', np.nan, regex=True)
 
-# change numerical vars to numerical[points1, points2, team1_diff, team2_diff, tot_point, set, receiver_loc, pass_loc, pass_quality, num_block]
-num_col = ['points1', 'points2', 'team1_diff', 'team2_diff', 'tot_point', 'set', 'receiver_loc', 'pass_loc', 'pass_quality', 'num_block']
+# change numerical vars to numerical[points1, points2, team1_diff, team2_diff, tot_point, set, rotation, receiver_loc, pass_loc, pass_quality, num_block]
+num_col = ['points1', 'points2', 'team1_diff', 'team2_diff', 'tot_point', 'set', 'rotation', 'receiver_loc', 'pass_loc', 'pass_quality', 'num_block']
 df[num_col] = df[num_col].apply(
     lambda col: pd.to_numeric(col, errors='coerce')
 )
 df[num_col] = df[num_col].astype('Int64')
 
 # change categorical to categorical variables[game, rotation, set_loc, set_receiver, team, level, game_sex]
-cat_col = ['game', 'rotation', 'set_loc', 'set_receiver', 'team', 'level', 'game_sex']
-for col in cat_col:
-    df[col] = df[col].astype(str).str.strip()
-    df[col] = df[col].astype('category')
+# categorical does not carry through excel, so convert when using 
 
 # change kill to logical
 df['kill'] = df['kill'].astype('boolean')
