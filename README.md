@@ -23,6 +23,6 @@ I train, select, and evaluate the advanced models in the GoogleColab notebooks, 
 
 The `cnn` folder contains a script for the three response variables, attack success, set location, and set reciever.  The folder contains two additional scripts that investigate different groupings for the set location and set receiver variables marked as `Grouped`.  Each cnn script contains CNN and VGG construction, training, selection, and evaluation for each response variable.  Thus, the scripts are `CNN_<Orig or Grouped><variable_name>.ipynb`.
 
-The `xgboost` folder contains the script constructing, training, selecting, and evaluating an xgboost model for its corresponding response variable.  I labeled the scripts as XGBoost_<variable_name>.ipynb.
+The `xgboost` folder contains the script constructing, training, selecting, and evaluating an xgboost model for its corresponding response variable.  I labeled the scripts as `XGBoost_<variable_name>.ipynb`.
 
 
